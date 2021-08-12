@@ -5,6 +5,7 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 Subheadings to categorize changes are `added, changed, deprecated, removed, fixed, security`.
 
 ## Unreleased
+- Added `trunk serve` autoreload triggered over websocket that reloads the page when a change is detected. The `--no-autoreload` flag disables this feature.
 
 ## 0.13.1
 - Fixed [#219](https://github.com/thedodd/trunk/issues/219): Preserve websocket message types when sending to the backend.
