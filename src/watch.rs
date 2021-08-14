@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use futures::prelude::*;
@@ -30,10 +31,8 @@ pub struct WatchSystem {
     _watcher: RecommendedWatcher,
     /// The application shutdown channel.
     shutdown: BroadcastStream<()>,
-    /// Channel that is sent on whenever a build completes.
-    build_done_tx: Option<broadcast::Sender<()>>,
 
-    exec_handler: ExecHandler,
+    build_start_tx: std::sync::mpsc::Sender<()>,
 }
 
 impl WatchSystem {
@@ -49,14 +48,9 @@ impl WatchSystem {
         // Build dependencies.
         let build = BuildSystem::new(cfg.build.clone(), Some(build_tx)).await?;
 
-        let exec_handler = {
-            let mut builder = ConfigBuilder::default();
-            builder.cmd(vec![std::env::args().next().unwrap(), "build".into()]);
-            builder.paths(vec![".".into()]);
-            builder.on_busy_update(OnBusyUpdate::Restart);
-            let config = builder.build().unwrap();
-            ExecHandler::new(config)?
-        };
+        let (build_start_tx, build_start_rx) = std::sync::mpsc::channel();
+        start_build_thread(build_start_rx, build_done_tx)?;
+
         Ok(Self {
             build,
             ignored_paths: cfg.ignored_paths.clone(),
@@ -64,8 +58,7 @@ impl WatchSystem {
             build_rx,
             _watcher,
             shutdown: BroadcastStream::new(shutdown.subscribe()),
-            build_done_tx,
-            exec_handler,
+            build_start_tx,
         })
     }
 
@@ -122,13 +115,7 @@ impl WatchSystem {
 
             tracing::debug!("change detected in {:?}", ev_path);
             // let _res = self.build.build().await;
-            self.exec_handler.on_update(&[]).unwrap();
-
-            // TODO/NOTE: in the future, we will want to be able to pass along error info and other
-            // diagnostics info over the socket for use in an error overlay or console logging.
-            if let Some(tx) = self.build_done_tx.as_mut() {
-                let _ = tx.send(());
-            }
+            self.build_start_tx.send(()).unwrap();
 
             return; // If one of the paths triggers a build, then we're done.
         }
@@ -169,4 +156,41 @@ fn build_watcher(watch_tx: mpsc::Sender<Event>, paths: Vec<PathBuf>) -> Result<R
     }
 
     Ok(watcher)
+}
+
+pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut build_done_tx: Option<broadcast::Sender<()>>) -> Result<()> {
+    std::thread::spawn(move || {
+        let exec_handler = {
+            let mut builder = ConfigBuilder::default();
+            builder.cmd(vec![std::env::args().next().unwrap(), "build".into()]);
+            builder.paths(vec![".".into()]);
+            builder.on_busy_update(OnBusyUpdate::Restart);
+            let config = builder.build().unwrap();
+            ExecHandler::new(config).unwrap()
+        };
+        let mut building = false;
+        loop {
+            match build_start_rx.try_recv() {
+                Ok(_) => {
+                    tracing::debug!("start build...");
+                    building = true;
+                    exec_handler.on_update(&[]).unwrap();
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                _ => break,
+            }
+            if building && !exec_handler.has_running_process().unwrap() {
+                tracing::debug!("end build.");
+                building = false;
+                // TODO/NOTE: in the future, we will want to be able to pass along error info and other
+                // diagnostics info over the socket for use in an error overlay or console logging.
+                if let Some(tx) = build_done_tx.as_mut() {
+                    tracing::debug!("reload.");
+                    let _ = tx.send(());
+                }
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    });
+    Ok(())
 }

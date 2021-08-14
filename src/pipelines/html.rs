@@ -135,7 +135,7 @@ impl HtmlPipeline {
         base_elements.set_attr("href", &self.cfg.public_url);
 
         // Inject the WebSocket autoloader.
-        if self.cfg.inject_autoloader {
+        if !self.cfg.release {
             target_html
                 .select("body")
                 .append_html(format!("<script>{}</script>", RELOAD_SCRIPT));
