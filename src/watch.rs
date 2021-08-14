@@ -122,7 +122,7 @@ impl WatchSystem {
 
             tracing::debug!("change detected in {:?}", ev_path);
             // let _res = self.build.build().await;
-            self.exec_handler.on_manual().unwrap();
+            self.exec_handler.on_update(&[]).unwrap();
 
             // TODO/NOTE: in the future, we will want to be able to pass along error info and other
             // diagnostics info over the socket for use in an error overlay or console logging.
