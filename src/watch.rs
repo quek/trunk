@@ -6,6 +6,9 @@ use futures::prelude::*;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::BroadcastStream;
+use watchexec::config::ConfigBuilder;
+use watchexec::run::{ExecHandler, OnBusyUpdate};
+use watchexec::Handler;
 
 use crate::build::BuildSystem;
 use crate::config::RtcWatch;
@@ -29,6 +32,8 @@ pub struct WatchSystem {
     shutdown: BroadcastStream<()>,
     /// Channel that is sent on whenever a build completes.
     build_done_tx: Option<broadcast::Sender<()>>,
+
+    exec_handler: ExecHandler,
 }
 
 impl WatchSystem {
@@ -43,6 +48,15 @@ impl WatchSystem {
 
         // Build dependencies.
         let build = BuildSystem::new(cfg.build.clone(), Some(build_tx)).await?;
+
+        let exec_handler = {
+            let mut builder = ConfigBuilder::default();
+            builder.cmd(vec![std::env::args().next().unwrap(), "build".into()]);
+            builder.paths(vec![".".into()]);
+            builder.on_busy_update(OnBusyUpdate::Restart);
+            let config = builder.build().unwrap();
+            ExecHandler::new(config)?
+        };
         Ok(Self {
             build,
             ignored_paths: cfg.ignored_paths.clone(),
@@ -51,6 +65,7 @@ impl WatchSystem {
             _watcher,
             shutdown: BroadcastStream::new(shutdown.subscribe()),
             build_done_tx,
+            exec_handler,
         })
     }
 
@@ -106,7 +121,8 @@ impl WatchSystem {
             }
 
             tracing::debug!("change detected in {:?}", ev_path);
-            let _res = self.build.build().await;
+            // let _res = self.build.build().await;
+            self.exec_handler.on_manual().unwrap();
 
             // TODO/NOTE: in the future, we will want to be able to pass along error info and other
             // diagnostics info over the socket for use in an error overlay or console logging.
