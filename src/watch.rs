@@ -173,6 +173,7 @@ pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut bui
             match build_start_rx.try_recv() {
                 Ok(_) => {
                     tracing::debug!("start build...");
+                    while build_start_rx.recv_timeout(Duration::from_millis(100)).is_ok() {}
                     building = true;
                     exec_handler.on_update(&[]).unwrap();
                 }
