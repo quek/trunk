@@ -7,6 +7,7 @@ use futures::prelude::*;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, mpsc};
+use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::build::BuildSystem;
@@ -178,6 +179,7 @@ pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut bui
             }
             match child.as_mut().map(|child| child.try_wait()) {
                 Some(Ok(Some(exit_status))) => {
+                    tracing::debug!("build done => {}", exit_status.success());
                     child.take();
                     if exit_status.success() {
                         if let Some(tx) = build_done_tx.as_mut() {
@@ -188,7 +190,7 @@ pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut bui
                 }
                 _ => {}
             }
-            std::thread::sleep(Duration::from_millis(100));
+            sleep(Duration::from_millis(100)).await;
         }
     });
 }
