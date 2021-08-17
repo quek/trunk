@@ -160,15 +160,13 @@ fn build_watcher(watch_tx: mpsc::Sender<Event>, paths: Vec<PathBuf>) -> Result<R
 pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut build_done_tx: Option<broadcast::Sender<()>>) {
     tokio::spawn(async move {
         let mut child: Option<Child> = None;
+        let mut old_child: Option<Child> = None;
         loop {
             match build_start_rx.try_recv() {
                 Ok(_) => {
                     tracing::debug!("start build...");
                     while build_start_rx.recv_timeout(Duration::from_millis(100)).is_ok() {}
-                    if let Some(child) = child.as_mut() {
-                        tracing::debug!("drop {:?}", child.id());
-                        drop(child);
-                    }
+                    old_child = child;
                     child = Some(
                         Command::new(std::env::args().next().unwrap())
                             .arg("build")
@@ -179,6 +177,11 @@ pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut bui
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 _ => break,
+            }
+            if let Some(x) = old_child.as_mut() {
+                tracing::debug!("drop {:?}", x.id());
+                let _ = x.kill().await;
+                old_child = None;
             }
             match child.as_mut().map(|child| child.try_wait()) {
                 Some(Ok(Some(exit_status))) => {
