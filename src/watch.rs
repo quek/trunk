@@ -5,11 +5,9 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use futures::prelude::*;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::BroadcastStream;
-use watchexec::config::ConfigBuilder;
-use watchexec::run::{ExecHandler, OnBusyUpdate};
-use watchexec::Handler;
 
 use crate::build::BuildSystem;
 use crate::config::RtcWatch;
@@ -49,7 +47,7 @@ impl WatchSystem {
         let build = BuildSystem::new(cfg.build.clone(), Some(build_tx)).await?;
 
         let (build_start_tx, build_start_rx) = std::sync::mpsc::channel();
-        start_build_thread(build_start_rx, build_done_tx)?;
+        start_build_thread(build_start_rx, build_done_tx);
 
         Ok(Self {
             build,
@@ -158,40 +156,39 @@ fn build_watcher(watch_tx: mpsc::Sender<Event>, paths: Vec<PathBuf>) -> Result<R
     Ok(watcher)
 }
 
-pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut build_done_tx: Option<broadcast::Sender<()>>) -> Result<()> {
-    std::thread::spawn(move || {
-        let exec_handler = {
-            let mut builder = ConfigBuilder::default();
-            builder.cmd(vec![std::env::args().next().unwrap(), "build".into()]);
-            builder.paths(vec![".".into()]);
-            builder.on_busy_update(OnBusyUpdate::Restart);
-            let config = builder.build().unwrap();
-            ExecHandler::new(config).unwrap()
-        };
-        let mut building = false;
+pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut build_done_tx: Option<broadcast::Sender<()>>) {
+    tokio::spawn(async move {
+        let mut child: Option<Child> = None;
         loop {
             match build_start_rx.try_recv() {
                 Ok(_) => {
                     tracing::debug!("start build...");
                     while build_start_rx.recv_timeout(Duration::from_millis(100)).is_ok() {}
-                    building = true;
-                    exec_handler.on_update(&[]).unwrap();
+                    child.take();
+                    child = Some(
+                        Command::new(std::env::args().next().unwrap())
+                            .arg("build")
+                            .kill_on_drop(true)
+                            .spawn()
+                            .unwrap(),
+                    );
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 _ => break,
             }
-            if building && !exec_handler.has_running_process().unwrap() {
-                tracing::debug!("end build.");
-                building = false;
-                // TODO/NOTE: in the future, we will want to be able to pass along error info and other
-                // diagnostics info over the socket for use in an error overlay or console logging.
-                if let Some(tx) = build_done_tx.as_mut() {
-                    tracing::debug!("reload.");
-                    let _ = tx.send(());
+            match child.as_mut().map(|child| child.try_wait()) {
+                Some(Ok(Some(exit_status))) => {
+                    child.take();
+                    if exit_status.success() {
+                        if let Some(tx) = build_done_tx.as_mut() {
+                            tracing::debug!("reload.");
+                            let _ = tx.send(());
+                        }
+                    }
                 }
+                _ => {}
             }
             std::thread::sleep(Duration::from_millis(100));
         }
     });
-    Ok(())
 }
