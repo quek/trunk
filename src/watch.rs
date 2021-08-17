@@ -166,6 +166,7 @@ pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut bui
                     tracing::debug!("start build...");
                     while build_start_rx.recv_timeout(Duration::from_millis(100)).is_ok() {}
                     if let Some(child) = child.as_mut() {
+                        tracing::debug!("drop {:?}", child.id());
                         drop(child);
                     }
                     child = Some(
