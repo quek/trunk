@@ -31,6 +31,8 @@ pub struct WatchSystem {
     _watcher: RecommendedWatcher,
     /// The application shutdown channel.
     shutdown: BroadcastStream<()>,
+    /// Channel that is sent on whenever a build completes.
+    build_done_tx: Option<broadcast::Sender<()>>,
 
     build_start_tx: std::sync::mpsc::Sender<()>,
 }
@@ -49,7 +51,7 @@ impl WatchSystem {
         let build = BuildSystem::new(cfg.build.clone(), Some(build_tx)).await?;
 
         let (build_start_tx, build_start_rx) = std::sync::mpsc::channel();
-        start_build_thread(build_start_rx, build_done_tx)?;
+        start_build_thread(build_start_rx)?;
 
         Ok(Self {
             build,
@@ -58,6 +60,7 @@ impl WatchSystem {
             build_rx,
             _watcher,
             shutdown: BroadcastStream::new(shutdown.subscribe()),
+            build_done_tx,
             build_start_tx,
         })
     }
@@ -158,7 +161,7 @@ fn build_watcher(watch_tx: mpsc::Sender<Event>, paths: Vec<PathBuf>) -> Result<R
     Ok(watcher)
 }
 
-pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut build_done_tx: Option<broadcast::Sender<()>>) -> Result<()> {
+pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>) -> Result<()> {
     std::thread::spawn(move || {
         let exec_handler = {
             let mut builder = ConfigBuilder::default();
@@ -168,29 +171,15 @@ pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut bui
             let config = builder.build().unwrap();
             ExecHandler::new(config).unwrap()
         };
-        let mut building = false;
         loop {
-            match build_start_rx.try_recv() {
+            match build_start_rx.recv() {
                 Ok(_) => {
                     tracing::debug!("start build...");
                     while build_start_rx.recv_timeout(Duration::from_millis(100)).is_ok() {}
-                    building = true;
                     exec_handler.on_update(&[]).unwrap();
                 }
-                Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 _ => break,
             }
-            if building && !exec_handler.has_running_process().unwrap() {
-                tracing::debug!("end build.");
-                building = false;
-                // TODO/NOTE: in the future, we will want to be able to pass along error info and other
-                // diagnostics info over the socket for use in an error overlay or console logging.
-                if let Some(tx) = build_done_tx.as_mut() {
-                    tracing::debug!("reload.");
-                    let _ = tx.send(());
-                }
-            }
-            std::thread::sleep(Duration::from_millis(100));
         }
     });
     Ok(())
