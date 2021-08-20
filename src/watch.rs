@@ -5,13 +5,14 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use futures::prelude::*;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use tokio::process::{Child, Command};
+// use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, mpsc};
+use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::build::BuildSystem;
-use crate::config::RtcWatch;
+use crate::config::{RtcBuild, RtcWatch};
 
 /// Blacklisted path segments which are ignored by the watcher by default.
 const BLACKLIST: [&str; 1] = [".git"];
@@ -48,7 +49,7 @@ impl WatchSystem {
         let build = BuildSystem::new(cfg.build.clone(), Some(build_tx)).await?;
 
         let (build_start_tx, build_start_rx) = std::sync::mpsc::channel();
-        start_build_thread(build_start_rx, build_done_tx);
+        start_build_thread(cfg.build.clone(), build_start_rx, build_done_tx);
 
         Ok(Self {
             build,
@@ -157,45 +158,58 @@ fn build_watcher(watch_tx: mpsc::Sender<Event>, paths: Vec<PathBuf>) -> Result<R
     Ok(watcher)
 }
 
-pub fn start_build_thread(build_start_rx: std::sync::mpsc::Receiver<()>, mut build_done_tx: Option<broadcast::Sender<()>>) {
+pub fn start_build_thread(rtc_build: Arc<RtcBuild>, build_start_rx: std::sync::mpsc::Receiver<()>, mut build_done_tx: Option<broadcast::Sender<()>>) {
     tokio::spawn(async move {
-        let mut child: Option<Child> = None;
-        let mut old_child: Option<Child> = None;
+        // let mut child: Option<Child> = None;
+        // let mut old_child: Option<Child> = None;
+        // let build = BuildSystem::new(rtc_build, None).await.unwrap();
+        let mut join_handle: Option<JoinHandle<()>> = None;
         loop {
             match build_start_rx.try_recv() {
                 Ok(_) => {
                     tracing::debug!("start build...");
+                    if let Some(join_handler) = join_handle {
+                        tracing::debug!("abort old build task!");
+                        join_handler.abort();
+                    }
                     while build_start_rx.recv_timeout(Duration::from_millis(100)).is_ok() {}
-                    old_child = child;
-                    child = Some(
-                        Command::new(std::env::args().next().unwrap())
-                            .arg("build")
-                            .kill_on_drop(true)
-                            .spawn()
-                            .unwrap(),
-                    );
+
+                    let cfg = rtc_build.clone();
+                    join_handle = Some(tokio::spawn(async move {
+                        let mut build = BuildSystem::new(cfg, None).await.unwrap();
+                        let _res = build.build().await;
+                    }));
+
+                    // old_child = child;
+                    // child = Some(
+                    //     Command::new(std::env::args().next().unwrap())
+                    //         .arg("build")
+                    //         .kill_on_drop(true)
+                    //         .spawn()
+                    //         .unwrap(),
+                    // );
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 _ => break,
             }
-            if let Some(x) = old_child.as_mut() {
-                tracing::debug!("drop {:?}", x.id());
-                let _ = x.kill().await;
-                old_child = None;
-            }
-            match child.as_mut().map(|child| child.try_wait()) {
-                Some(Ok(Some(exit_status))) => {
-                    tracing::debug!("build done => {}", exit_status.success());
-                    child.take();
-                    if exit_status.success() {
-                        if let Some(tx) = build_done_tx.as_mut() {
-                            tracing::debug!("reload.");
-                            let _ = tx.send(());
-                        }
-                    }
-                }
-                _ => {}
-            }
+            // if let Some(x) = old_child.as_mut() {
+            //     tracing::debug!("drop {:?}", x.id());
+            //     let _ = x.kill().await;
+            //     old_child = None;
+            // }
+            // match child.as_mut().map(|child| child.try_wait()) {
+            //     Some(Ok(Some(exit_status))) => {
+            //         tracing::debug!("build done => {}", exit_status.success());
+            //         child.take();
+            //         if exit_status.success() {
+            //             if let Some(tx) = build_done_tx.as_mut() {
+            //                 tracing::debug!("reload.");
+            //                 let _ = tx.send(());
+            //             }
+            //         }
+            //     }
+            //     _ => {}
+            // }
             sleep(Duration::from_millis(100)).await;
         }
     });
