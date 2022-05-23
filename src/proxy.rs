@@ -64,7 +64,8 @@ impl ProxyHandlerHttp {
         // 1, the router always strips the value `state.path()`, so interpolate the backend path.
         // 2, pass along the remaining path segment which was preserved by the router.
         let mut segments = ["/", "", "", "", ""];
-        segments[1] = state.backend.path().trim_start_matches('/');
+        // segments[1] = state.backend.path().trim_start_matches('/');
+        segments[1] = req.uri().path().trim_start_matches('/');
         if state.backend.path().ends_with('/') {
             segments[2] = req.uri().path().trim_start_matches('/');
         } else {
