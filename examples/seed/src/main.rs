@@ -17,7 +17,9 @@ type TodoId = Uuid;
 // ------ ------
 
 fn init(url: Url, orders: &mut impl Orders<Msg>) -> Model {
-    orders.subscribe(Msg::UrlChanged).notify(subs::UrlChanged(url));
+    orders
+        .subscribe(Msg::UrlChanged)
+        .notify(subs::UrlChanged(url));
 
     Model {
         data: LocalStorage::get(STORAGE_KEY).unwrap_or_default(),
@@ -116,8 +118,12 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::UrlChanged(subs::UrlChanged(mut url)) => {
             data.filter = match url.next_path_part() {
-                Some(path_part) if path_part == TodoFilter::Active.to_url_path() => TodoFilter::Active,
-                Some(path_part) if path_part == TodoFilter::Completed.to_url_path() => TodoFilter::Completed,
+                Some(path_part) if path_part == TodoFilter::Active.to_url_path() => {
+                    TodoFilter::Active
+                }
+                Some(path_part) if path_part == TodoFilter::Completed.to_url_path() => {
+                    TodoFilter::Completed
+                }
                 _ => TodoFilter::All,
             };
         }
@@ -200,7 +206,12 @@ fn view(model: &Model) -> impl IntoNodes<Msg> {
             vec![]
         } else {
             vec![
-                view_main(&data.todos, data.filter, &data.editing_todo, &model.refs.editing_todo_input),
+                view_main(
+                    &data.todos,
+                    data.filter,
+                    &data.editing_todo,
+                    &model.refs.editing_todo_input,
+                ),
                 view_footer(&data.todos, data.filter),
             ]
         },
@@ -231,7 +242,10 @@ fn view_header(new_todo_title: &str) -> Node<Msg> {
 // ------ main ------
 
 fn view_main(
-    todos: &IndexMap<TodoId, Todo>, filter: TodoFilter, editing_todo: &Option<EditingTodo>, editing_todo_input: &ElRef<HtmlInputElement>,
+    todos: &IndexMap<TodoId, Todo>,
+    filter: TodoFilter,
+    editing_todo: &Option<EditingTodo>,
+    editing_todo_input: &ElRef<HtmlInputElement>,
 ) -> Node<Msg> {
     let all_todos_completed = todos.values().all(|todo| todo.completed);
 
@@ -252,7 +266,10 @@ fn view_main(
 }
 
 fn view_todos(
-    todos: &IndexMap<TodoId, Todo>, filter: TodoFilter, editing_todo: &Option<EditingTodo>, editing_todo_input: &ElRef<HtmlInputElement>,
+    todos: &IndexMap<TodoId, Todo>,
+    filter: TodoFilter,
+    editing_todo: &Option<EditingTodo>,
+    editing_todo_input: &ElRef<HtmlInputElement>,
 ) -> Node<Msg> {
     ul![
         C!["todo-list"],
@@ -268,7 +285,12 @@ fn view_todos(
 }
 
 #[allow(clippy::cognitive_complexity)]
-fn view_todo(todo_id: &TodoId, todo: &Todo, editing_todo: &Option<EditingTodo>, editing_todo_input: &ElRef<HtmlInputElement>) -> Node<Msg> {
+fn view_todo(
+    todo_id: &TodoId,
+    todo: &Todo,
+    editing_todo: &Option<EditingTodo>,
+    editing_todo_input: &ElRef<HtmlInputElement>,
+) -> Node<Msg> {
     li![
         C![
             IF!(todo.completed => "completed"),
@@ -282,10 +304,22 @@ fn view_todo(todo_id: &TodoId, todo: &Todo, editing_todo: &Option<EditingTodo>, 
                     At::Type => "checkbox",
                     At::Checked => todo.completed.as_at_value()
                 },
-                ev(Ev::Change, enc!((todo_id) move |_| Msg::ToggleTodo(todo_id)))
+                ev(
+                    Ev::Change,
+                    enc!((todo_id) move |_| Msg::ToggleTodo(todo_id))
+                )
             ],
-            label![ev(Ev::DblClick, enc!((todo_id) move |_| Msg::StartTodoEdit(todo_id))), &todo.title],
-            button![C!["destroy"], ev(Ev::Click, enc!((todo_id) move |_| Msg::RemoveTodo(todo_id)))]
+            label![
+                ev(
+                    Ev::DblClick,
+                    enc!((todo_id) move |_| Msg::StartTodoEdit(todo_id))
+                ),
+                &todo.title
+            ],
+            button![
+                C!["destroy"],
+                ev(Ev::Click, enc!((todo_id) move |_| Msg::RemoveTodo(todo_id)))
+            ]
         ],
         match editing_todo {
             Some(editing_todo) if &editing_todo.id == todo_id => {
@@ -319,7 +353,10 @@ fn view_footer(todos: &IndexMap<TodoId, Todo>, filter: TodoFilter) -> Node<Msg> 
         span![
             C!["todo-count"],
             strong![active_count.to_string()],
-            span![format!(" item{} left", if active_count == 1 { "" } else { "s" })]
+            span![format!(
+                " item{} left",
+                if active_count == 1 { "" } else { "s" }
+            )]
         ],
         view_filters(filter),
         view_clear_completed(todos),

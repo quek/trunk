@@ -5,7 +5,48 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 Subheadings to categorize changes are `added, changed, deprecated, removed, fixed, security`.
 
 ## Unreleased
+### added
+### changed
+### fixed
+
+## 0.15.0
+### added
+- Added the `--address` option for `trunk serve`.
+- Open autoreload websocket using wss when assets are served over a secure connection.
+- Added the `data-type` attribute to Rust assets. Can be set to either `main` (previous behaviour and default) or `worker`, which builds the asset and includes it as a web worker.
+- Added the `--proxy-insecure` option for `trunk serve`.
+- Added the `insecure` option to the `proxy` section in `Trunk.toml`.
+- It is now possible to disable the hashes in output file names with the new `--filehash` flag (for example `cargo build --filehash false`). Alternatively the `build.filehash` setting in `Trunk.toml` or the env var `CARGO_BUILD_FILEHASH` can be used.
+- Flags for enabling reference types & weak references in `wasm-bindgen`.
+- Added the `data-typescript` attribute to Rust assets. When present, `wasm-bindgen` will emit TS files for the WASM module.
+
+### changed
+- Remove the temporary output of the SASS compiler from the output directory of Trunk.
+- The `cargo serve` command now listens on `127.0.0.1` (localhost) instead of `0.0.0.0`, fixing security issues when on a public Wi-Fi or otherwise accessible network connection. The address can still be changed with the `Trunk.toml` or `--address` cli argument.
+- Print the serving address with a protocol to make it to be recognized as an URL in some terminals [#292](https://github.com/thedodd/trunk/issues/292)
+- Bumped up the default version for the `dart-sass`, `wasm-bindgen` and `wasm-opt` tools to their latest available version.
+- For `wasm-opt` and `dart-sass`, use the system-installed version if no explicit version is set. Previously Trunk would check for a specific default version which was likely to be an older version.
+- All arguments are now logged in verbose mode, whenever an external binary is executed. Use `trunk -v build ...` (or some other sub-command) to try it out.
+- Replace the custom logic for serving the static assets, with some types from the `tower-http` crate. This reduces the amount of custom code needed to serve files.
+
+### fixed
+- Fixing double-builds caused by downgrading from `notify` v5 back to v4, which contains debounce logic for filesystem events.
+- Verify the target architecture when downloading tools in addition to the OS and fail if the architecture doesn't match, instead of downloading and try to run on mismatching architectures.
+- Force HTTP/1 on proxy client, which fixes [#280](https://github.com/thedodd/trunk/issues/280).
+- Updated all dependencies to their latest versions, fixing several potential security issues.
+
+## 0.14.0
+### added
+- Trunk now includes a hooks system. This improves many use cases where another build tool is needed alongside trunk, by allowing trunk to be configured to call them at various stages during the build pipeline. It is configured under `[[hooks]]` in `Trunk.toml`. More information can be found in the [Assets](https://trunkrs.dev/assets/) section of the docs.
 - Added `trunk serve` autoreload triggered over websocket that reloads the page when a change is detected. The `--no-autoreload` flag disables this feature.
+- Added the optional `pattern_script` field to the `Trunk.toml` for overloading the template of initialization script.
+- Added the optional `pattern_preload` field to the `Trunk.toml` for overloading the template of WASM preloading.
+- Added the optional `pattern_params` field to the `Trunk.toml` for extending `pattern_script` and `pattern_preload` with additional values, including external files. Overloading these parameters allow users to use `trunk` with other frameworks [like this](https://github.com/ivanceras/sauron/tree/5208508a9675852334b7cc7624ba83fdb11edeb1/examples/progressive-rendering).
+- Allow overriding the used tool versions (wasm-bindgen, wasm-opt, dart-sass) with environment variables. For example use `TRUNK_TOOLS_SASS` to override the used dart-sass version.
+
+### changed
+- Download and use the official `dart-sass` binary for SASS/SCSS to CSS compilation. This allows to always support the latest features and will allow to make Trunk available for futher platforms in the future as this removes the dependency on `sass-rs`.
+- Proxied websockets now shut down immediately upon completion of streaming data in either direction, instead of waiting for completion of both directions.
 
 ## 0.13.1
 - Fixed [#219](https://github.com/thedodd/trunk/issues/219): Preserve websocket message types when sending to the backend.
