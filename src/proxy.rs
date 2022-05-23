@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use axum::body::Body;
 use axum::extract::ws::{Message as MsgAxm, WebSocket, WebSocketUpgrade};
-use axum::extract::Extension;
+use axum::extract::{Extension, OriginalUri};
 use axum::handler::Handler;
 use axum::http::{Request, Response, Uri};
 use axum::routing::{any, get, Router};
@@ -68,8 +68,11 @@ impl ProxyHandlerHttp {
         // 1, the router always strips the value `state.path()`, so interpolate the backend path.
         // 2, pass along the remaining path segment which was preserved by the router.
         let mut segments = ["/", "", "", "", ""];
-        segments[1] = state.backend.path().trim_start_matches('/');
-        if state.backend.path().ends_with('/') {
+
+        let original_uri_path = req.extensions().get::<OriginalUri>().unwrap().0.path();
+        segments[1] = original_uri_path.trim_start_matches('/');
+
+        if original_uri_path.ends_with('/') {
             segments[2] = req.uri().path().trim_start_matches('/');
         } else {
             segments[2] = req.uri().path();
