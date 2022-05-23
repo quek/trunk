@@ -3,7 +3,8 @@ target = "index.html"
 dist = "dist"
 
 [[proxy]]
-backend = "http://localhost:7778/foo/:id/bar/a"
+rewrite = "/staff/:temple_id/settings"
+backend = "http://localhost:7778/settings"
 
 [[proxy]]
 backend = "http://localhost:7778/api/"
