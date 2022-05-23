@@ -72,11 +72,6 @@ impl ProxyHandlerHttp {
         let original_uri_path = req.extensions().get::<OriginalUri>().unwrap().0.path();
         segments[1] = original_uri_path.trim_start_matches('/');
 
-        if original_uri_path.ends_with('/') {
-            segments[2] = req.uri().path().trim_start_matches('/');
-        } else {
-            segments[2] = req.uri().path();
-        }
         // 3 & 4, pass along the query if applicable.
         if let Some(query) = req.uri().query() {
             segments[3] = "?";

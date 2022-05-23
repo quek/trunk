@@ -4,3 +4,6 @@ dist = "dist"
 
 [[proxy]]
 backend = "http://localhost:7778/foo/:id/bar/a"
+
+[[proxy]]
+backend = "http://localhost:7778/api/"
