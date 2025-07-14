@@ -574,7 +574,7 @@ impl RustAppOutput {
             Some(pattern) => pattern_evaluate(pattern, &params),
             None => {
                 format!(
-                    r#"<script type="module">import init from '{base}{js}';init('{base}{wasm}');</script>"#,
+                    r#"<script type="module">import init from '{base}{js}';init({module_or_path: '{base}{wasm}'});</script>"#,
                     base = base,
                     js = js,
                     wasm = wasm,
